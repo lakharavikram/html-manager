@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="hi">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#111827">
+<title>My HTML File Manager</title>
+<link rel="manifest" href="./manifest.json">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f5f9;color:#172033;font:15px system-ui,Arial}header{background:#111827;color:white;padding:18px 16px}header h1{margin:0;font-size:21px}header p{margin:5px 0 0;color:#cbd5e1;font-size:13px}.wrap{max-width:850px;margin:auto;padding:14px}.notice{padding:12px;border-radius:12px;background:#fff7df;color:#76520a;margin-bottom:12px;font-size:13px}.actions{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin:12px 0}button,.filebtn{border:0;border-radius:11px;padding:12px;background:#2563eb;color:white;font-weight:650;font-size:14px;cursor:pointer;text-align:center}button.secondary{background:#e5eaf2;color:#172033}button.danger{background:#dc2626}.search, input,textarea{width:100%;padding:12px;border:1px solid #d7deea;border-radius:10px;font:inherit;background:white}.search{margin:4px 0 12px}.list{display:grid;gap:9px}.item{background:white;border:1px solid #e2e8f0;border-radius:13px;padding:13px;display:flex;align-items:center;gap:10px}.meta{min-width:0;flex:1}.meta b{display:block;overflow-wrap:anywhere}.meta small{color:#64748b}.item button{padding:9px 10px}.empty{text-align:center;padding:30px;color:#64748b;background:white;border-radius:12px}.modal{position:fixed;inset:0;background:#0009;display:none;align-items:center;justify-content:center;padding:12px}.panel{background:white;border-radius:15px;padding:15px;width:min(760px,100%);max-height:92vh;overflow:auto}.panel h2{margin:0 0 12px}.panel textarea{height:48vh;font:13px monospace;margin:8px 0}.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.row button{flex:1}.preview{width:100%;height:70vh;border:1px solid #ddd;border-radius:10px;background:white}
+</style></head>
+<body>
+<header><h1>📁 My HTML File Manager</h1><p>मोबाइल में HTML फाइलें बनाएँ, खोलें और मैनेज करें</p></header>
+<div class="wrap">
+<div id="modeNotice" class="notice">स्थानीय मोड: यह फाइल Chrome में सीधे चल रही है। इस मोड में PWA Install उपलब्ध नहीं होता।</div>
+<div class="actions">
+<button onclick="document.getElementById('pick').click()">＋ HTML फाइल Import</button>
+<button onclick="newFile()">＋ नई HTML बनाएँ</button>
+<button class="secondary" id="installBtn" style="display:none" onclick="installPwa()">📲 Install App</button>
+<button class="secondary" onclick="exportAll()">⬇ सभी फाइलों का बैकअप</button>
+</div>
+<input id="pick" type="file" accept=".html,.htm,text/html" multiple hidden>
+<input id="search" class="search" placeholder="फाइल का नाम खोजें..." oninput="render()">
+<div id="files" class="list"></div>
+</div>
+<div id="editor" class="modal"><div class="panel"><h2 id="editTitle">HTML Editor</h2><input id="filename" placeholder="फाइल का नाम.html"><textarea id="code" spellcheck="false"></textarea><div class="row"><button onclick="saveFile()">Save</button><button class="secondary" onclick="previewCode()">Preview</button><button class="secondary" onclick="closeEditor()">बंद करें</button></div></div></div>
+<div id="viewer" class="modal"><div class="panel"><h2>Preview</h2><iframe class="preview" id="frame" sandbox="allow-scripts allow-forms allow-modals"></iframe><div class="row"><button class="secondary" onclick="closePreview()">बंद करें</button></div></div></div>
+<script>
+const DB='myHtmlManagerDB', STORE='htmlFiles';let db,editingId=null,installPrompt=null;
+function openDB(){return new Promise((resolve,reject)=>{let r=indexedDB.open(DB,1);r.onupgradeneeded=()=>r.result.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});r.onsuccess=()=>{db=r.result;resolve()};r.onerror=()=>reject(r.error)})}
+function all(){return new Promise((res,rej)=>{let r=db.transaction(STORE).objectStore(STORE).getAll();r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+function put(v){return new Promise((res,rej)=>{let t=db.transaction(STORE,'readwrite');t.objectStore(STORE).put(v);t.oncomplete=res;t.onerror=()=>rej(t.error)})}
+function del(id){return new Promise((res,rej)=>{let t=db.transaction(STORE,'readwrite');t.objectStore(STORE).delete(id);t.oncomplete=res;t.onerror=()=>rej(t.error)})}
+function safeName(n){n=(n||'untitled.html').trim().replace(/[\\/:*?"<>|]/g,'_');return /\.html?$/i.test(n)?n:n+'.html'}
+async function render(){let q=document.getElementById('search').value.toLowerCase(),items=(await all()).filter(x=>x.name.toLowerCase().includes(q)).sort((a,b)=>b.updated-a.updated),root=document.getElementById('files');root.innerHTML='';if(!items.length){root.innerHTML='<div class="empty">अभी कोई HTML फाइल नहीं है। Import या नई HTML बनाएँ।</div>';return}for(let f of items){let d=document.createElement('div');d.className='item';let m=document.createElement('div');m.className='meta';let b=document.createElement('b');b.textContent='📄 '+f.name;let s=document.createElement('small');s.textContent=new Date(f.updated).toLocaleString();m.append(b,s);d.append(m);[['खोलें',()=>edit(f)],['डाउनलोड',()=>download(f)],['नाम बदलें',()=>rename(f)],['हटाएँ',()=>removeFile(f)]].forEach(([t,fn],i)=>{let bt=document.createElement('button');bt.textContent=t;if(i===2)bt.className='secondary';if(i===3)bt.className='danger';bt.onclick=fn;d.append(bt)});root.append(d)}}
+function showEditor(){document.getElementById('editor').style.display='flex'}function closeEditor(){document.getElementById('editor').style.display='none';editingId=null}
+function newFile(){editingId=null;document.getElementById('editTitle').textContent='नई HTML फाइल';document.getElementById('filename').value='new-file.html';document.getElementById('code').value='<!doctype html>\\n<html lang="hi">\\n<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Page</title></head>\\n<body>\\n<h1>नमस्ते!</h1>\\n</body></html>';showEditor()}
+function edit(f){editingId=f.id;document.getElementById('editTitle').textContent='फाइल एडिट करें';document.getElementById('filename').value=f.name;document.getElementById('code').value=f.code;showEditor()}
+async function saveFile(){let name=safeName(document.getElementById('filename').value),code=document.getElementById('code').value,items=await all();let old=items.find(x=>x.id===editingId);await put({id:editingId||undefined,name,code,updated:Date.now(),created:old?.created||Date.now()});closeEditor();render()}
+function download(f){let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([f.code],{type:'text/html'}));a.download=f.name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1500)}
+async function rename(f){let n=prompt('नया फाइल नाम',f.name);if(n===null)return;f.name=safeName(n);f.updated=Date.now();await put(f);render()}
+async function removeFile(f){if(confirm(f.name+' हटाएँ?')){await del(f.id);render()}}
+function previewCode(){let blob=new Blob([document.getElementById('code').value],{type:'text/html'});document.getElementById('frame').src=URL.createObjectURL(blob);document.getElementById('viewer').style.display='flex'}
+function closePreview(){document.getElementById('viewer').style.display='none';document.getElementById('frame').src='about:blank'}
+document.getElementById('pick').addEventListener('change',async e=>{for(let f of e.target.files){if(!/\.html?$/i.test(f.name))continue;await put({name:f.name,code:await f.text(),updated:Date.now(),created:Date.now()})}e.target.value='';render()});
+async function exportAll(){let items=await all();if(!items.length){alert('बैकअप के लिए कोई फाइल नहीं');return}let blob=new Blob([JSON.stringify(items,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='html-files-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1500)}
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;document.getElementById('installBtn').style.display='block'});
+async function installPwa(){if(!installPrompt)return;installPrompt.prompt();await installPrompt.userChoice;installPrompt=null}
+(async()=>{await openDB();await render();if(location.protocol==='https:'||location.hostname==='localhost'){document.getElementById('modeNotice').textContent='ऑनलाइन PWA मोड: सुरक्षित कनेक्शन उपलब्ध है।';if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{})}}else{document.getElementById('modeNotice').textContent='स्थानीय मोड: यह HTML फाइल मोबाइल में सीधे चल रही है। PWA इंस्टॉल के लिए इसी ऐप को HTTPS वेबसाइट पर रखना जरूरी है।'}})();
+</script></body></html>
